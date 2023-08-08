@@ -23,6 +23,12 @@ Led_pin = 25                        #変数"Led_pin"に18を格納
 GPIO.setmode(GPIO.BCM)              #GPIOのモードを"GPIO.BCM"に設定
 GPIO.setup(Led_pin, GPIO.OUT)       #GPIO18を出力モードに設定
 
+PIN = 12
+FREQ = 50
+
+GPIO.setup(PIN, GPIO.OUT)
+servo = GPIO.PWM(PIN, FREQ)
+
 # I2Cバスの初期化
 i2c_bus = busio.I2C(board.SCL, board.SDA)
 
@@ -33,7 +39,7 @@ sensor = adafruit_amg88xx.AMG88XX(i2c_bus, addr=0x68)
 # センサーの初期化待ち
 time.sleep(.1)
 
-tr3 = 0
+tr2 = 0
 group = 0
 
 # Reset the controller to its default settings, then disable CRC.  The bytes for
@@ -60,7 +66,7 @@ tstop = 20  # Loop execution duration (s)
 tsample = 0.01  # Sampling period for code execution (s)
 tdisp = 0.5  # Sampling period for values display (s)
 
-# Creating encoder object using GPIO pins 24 and 25
+# Creating encoder object using GPIO pins
 encoder1 = RotaryEncoder(6, 5, max_steps=0)
 encoder2 = RotaryEncoder(26, 16, max_steps=0)
 
@@ -82,8 +88,11 @@ num_pixels = 10
 ORDER = neopixel.GRB
 
 pixels = neopixel.NeoPixel(
-    pixel_pin, num_pixels, brightness=0.2, auto_write=False, pixel_order=ORDER
+    pixel_pin, num_pixels, brightness=0.8, auto_write=False, pixel_order=ORDER
 )
+
+#init
+servo.start(8.0)
 
 def wheel(pos):
       # Input a value 0 to 255 to get a color value.
@@ -120,8 +129,46 @@ class JoySubscriber(Node):
         self.subscription_joy = self.create_subscription(Joy, "/joy", self.joy_callback, 10)
         self.subscription_joy
     
-   def joy_callback(self, joy_msg):  
-      if(joy_msg.buttons[3]==1):    
+   def joy_callback(self, joy_msg):
+      global tr2,group,tprev
+
+      
+      if(joy_msg.buttons[0]==1):
+         pixels.fill((0, 0, 0))
+         pixels.show()
+         tr2=0
+         group=0
+      
+      
+      if(joy_msg.buttons[1]==1):
+         pixels.fill((0, 0, 255))
+         pixels.show()
+         tr2=1
+         group=0
+
+      if(joy_msg.buttons[2]==1):
+         pixels.fill((0, 0, 0))
+         pixels.show()
+         tr2=0
+         group=0
+         
+      if(joy_msg.buttons[3]==1):
+         pixels.fill((255, 255, 255))
+         pixels.show()
+         tr2=0
+         group=1
+
+
+      if(joy_msg.axes[4] > 0):
+         servo.ChangeDutyCycle(8.0)
+      if(joy_msg.axes[4] < 0):
+         servo.ChangeDutyCycle(6.0)
+      
+      if(joy_msg.axes[5] > 0):
+         GPIO.output(Led_pin, GPIO.HIGH)
+      elif(joy_msg.axes[5]== 0):
+         GPIO.output(Led_pin, GPIO.LOW)
+      elif(joy_msg.axes[5] < 0):
          # データ取得
          sensordata = sensor.pixels
          # bicubic補間したデータ
@@ -129,26 +176,14 @@ class JoySubscriber(Node):
          plt.colorbar()
 
          plt.show()
-   
-      global tr3,group,tprev
-       
-      if(joy_msg.buttons[1]==1):
-         pixels.fill((0, 0, 255))
-         tr3=1
-         group=0
-       
-      if(joy_msg.buttons[0]==1):
-         pixels.fill((0, 0, 0))
-         tr3=0
-         group=0
-           
-      if(joy_msg.buttons[2]==1):
-         GPIO.output(Led_pin, GPIO.HIGH)
-         pixels.fill((0, 0, 255))
-         group=1
-       
-      if(tr3==1 or group==1):
-         pixels.fill((0, 0, 255))
+      
+      if(tr2==1 or group==1):
+         if(tr2==1):
+            pixels.fill((0, 0, 255))
+            pixels.show()
+         elif(group==1):
+            pixels.fill((255,255,255))
+            pixels.show()
          time.sleep(0.001)
          right=-joy_msg.axes[1]
          left=joy_msg.axes[3]
@@ -159,6 +194,7 @@ class JoySubscriber(Node):
          mc.set_speed(1, -right_duty)
          mc.set_speed(2, -left_duty)
          time.sleep(0.001)
+       
            
       # Pausing for `tsample` to give CPU time to process encoder signal
       time.sleep(tsample)
@@ -176,7 +212,6 @@ class JoySubscriber(Node):
       # Updating previous values
       tprev = tcurr
       
-      pixels.show()
 
 
 def main(args=None):
