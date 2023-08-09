@@ -6,7 +6,7 @@ import motoron
 import busio
 import board
 import RPi.GPIO as GPIO 
-import neopixel
+import neopixel_spi as neopixel
 import adafruit_amg88xx
 import matplotlib.pyplot as plt
 import numpy as np
@@ -78,19 +78,18 @@ tstart = time.perf_counter()
 
 # Choose an open pin connected to the Data In of the NeoPixel strip, i.e. board.D18
 # NeoPixels must be connected to D10, D12, D18 or D21 to work.
-pixel_pin = board.D10
+spi = board.SPI()
 
 # The number of NeoPixels
-num_pixels = 10
+NUM_PIXELS = 10
 
 # The order of the pixel colors - RGB or GRB. Some NeoPixels have red and green reversed!
 # For RGBW NeoPixels, simply change the ORDER to RGBW or GRBW.
-ORDER = neopixel.GRB
+PIXEL_ORDER = neopixel.GRB
 
-pixels = neopixel.NeoPixel(
-    pixel_pin, num_pixels, brightness=0.8, auto_write=False, pixel_order=ORDER
+pixels = neopixel.NeoPixel_SPI(
+    spi, NUM_PIXELS, brightness=0.8, auto_write=False, pixel_order=PIXEL_ORDER, bit0=0b10000000
 )
-
 #init
 servo.start(8.0)
 
@@ -113,12 +112,12 @@ def wheel(pos):
          r = 0
          g = int(pos * 3)
          b = int(255 - pos * 3)
-      return (r, g, b) if ORDER in (neopixel.RGB, neopixel.GRB) else (r, g, b, 0)
+      return (r, g, b) if PIXEL_ORDER in (neopixel.RGB, neopixel.GRB) else (r, g, b, 0)
 
 def rainbow_cycle(wait):
    for j in range(255):
-      for i in range(num_pixels):
-         pixel_index = (i * 256 // num_pixels) + j
+      for i in range(NUM_PIXELS):
+         pixel_index = (i * 256 // NUM_PIXELS) + j
          pixels[i] = wheel(pixel_index & 255)
       pixels.show()
       time.sleep(wait)
@@ -128,17 +127,35 @@ class JoySubscriber(Node):
         super().__init__("joy_subscriber")
         self.subscription_joy = self.create_subscription(Joy, "/joy", self.joy_callback, 10)
         self.subscription_joy
+
+        self.joy_msgs = Joy()
     
    def joy_callback(self, joy_msg):
+      self.joy_msgs = joy_msg
+
       global tr2,group,tprev
 
-      
+      # Pausing for `tsample` to give CPU time to process encoder signal
+      time.sleep(tsample)
+      # Getting current time (s)
+      tcurr = time.perf_counter() - tstart
+      # Getting angular position of the encoder
+      # roughly every `tsample` seconds (deg.)
+      anglecurr1 = 360 / ppr * encoder1.steps
+      anglecurr2 = 360 / ppr * encoder2.steps
+      distance1=anglecurr1 / 360 * 2 * math.pi * 72 / 1000
+      distance2=anglecurr2 / 360 * 2 * math.pi * 72 / 1000
+      # Printing angular position every `tdisp` seconds
+      if (np.floor(tcurr/tdisp) - np.floor(tprev/tdisp)) == 1:
+         print("Dis_right = {:0.03f} deg Angle_right = {:0.03f} deg".format(distance1,anglecurr1))
+      # Updating previous values
+      tprev = tcurr
+
       if(joy_msg.buttons[0]==1):
          pixels.fill((0, 0, 0))
          pixels.show()
          tr2=0
          group=0
-      
       
       if(joy_msg.buttons[1]==1):
          pixels.fill((0, 0, 255))
@@ -157,7 +174,77 @@ class JoySubscriber(Node):
          pixels.show()
          tr2=0
          group=1
+      
+      if(joy_msg.buttons[9]==1):
+         pixels.fill((0, 255, 255))
+         pixels.show()
+         while(distance1>-0.900):
+            if(joy_msg.buttons[1]==1 or joy_msg.buttons[3]==1):
+               distance1 = -2.0
+            # Pausing for `tsample` to give CPU time to process encoder signal
+            time.sleep(tsample)
+            # Getting current time (s)
+            tcurr = time.perf_counter() - tstart
+            # Getting angular position of the encoder
+            # roughly every `tsample` seconds (deg.)
+            anglecurr1 = 360 / ppr * encoder1.steps
+            anglecurr2 = 360 / ppr * encoder2.steps
+            distance1=anglecurr1 / 360 * 2 * math.pi * 72 / 1000
+            distance2=anglecurr2 / 360 * 2 * math.pi * 72 / 1000
+            # Printing angular position every `tdisp` seconds
+            if (np.floor(tcurr/tdisp) - np.floor(tprev/tdisp)) == 1:
+               print("Dis_right = {:0.03f} deg Angle_right = {:0.03f} deg".format(distance1,anglecurr1))
+            # Updating previous values
+            tprev = tcurr
+            mc.set_speed(1, 100)
+            mc.set_speed(2, -100)
+            time.sleep(0.001)
 
+
+         
+         while(distance1>-0.912):
+            if(joy_msg.buttons[1]==1 or joy_msg.buttons[3]==1):
+               distance1 = -2.0
+            # Pausing for `tsample` to give CPU time to process encoder signal
+            time.sleep(tsample)
+            # Getting current time (s)
+            tcurr = time.perf_counter() - tstart
+            # Getting angular position of the encoder
+            # roughly every `tsample` seconds (deg.)
+            anglecurr1 = 360 / ppr * encoder1.steps
+            anglecurr2 = 360 / ppr * encoder2.steps
+            distance1=anglecurr1 / 360 * 2 * math.pi * 72 / 1000
+            distance2=anglecurr2 / 360 * 2 * math.pi * 72 / 1000
+            # Printing angular position every `tdisp` seconds
+            if (np.floor(tcurr/tdisp) - np.floor(tprev/tdisp)) == 1:
+               print("Dis_right = {:0.03f} deg Angle_right = {:0.03f} deg".format(distance1,anglecurr1))
+            # Updating previous values
+            tprev = tcurr
+            mc.set_speed(1, -100)
+            mc.set_speed(2, -100)
+            time.sleep(0.001)
+
+         while(distance1>-1.812):
+            if(joy_msg.buttons[1]==1 or joy_msg.buttons[3]==1):
+               distance1 = -2.0
+            # Pausing for `tsample` to give CPU time to process encoder signal
+            time.sleep(tsample)
+            # Getting current time (s)
+            tcurr = time.perf_counter() - tstart
+            # Getting angular position of the encoder
+            # roughly every `tsample` seconds (deg.)
+            anglecurr1 = 360 / ppr * encoder1.steps
+            anglecurr2 = 360 / ppr * encoder2.steps
+            distance1=anglecurr1 / 360 * 2 * math.pi * 72 / 1000
+            distance2=anglecurr2 / 360 * 2 * math.pi * 72 / 1000
+            # Printing angular position every `tdisp` seconds
+            if (np.floor(tcurr/tdisp) - np.floor(tprev/tdisp)) == 1:
+               print("Dis_right = {:0.03f} deg Angle_right = {:0.03f} deg".format(distance1,anglecurr1))
+            # Updating previous values
+            tprev = tcurr
+            mc.set_speed(1, 100)
+            mc.set_speed(2, -100)
+            time.sleep(0.001)
 
       if(joy_msg.axes[4] > 0):
          servo.ChangeDutyCycle(8.0)
@@ -174,7 +261,6 @@ class JoySubscriber(Node):
          # bicubic補間したデータ
          fig = plt.imshow(sensordata, cmap="inferno", interpolation="bicubic")
          plt.colorbar()
-
          plt.show()
       
       if(tr2==1 or group==1):
@@ -185,37 +271,34 @@ class JoySubscriber(Node):
             pixels.fill((255,255,255))
             pixels.show()
          time.sleep(0.001)
-         right=-joy_msg.axes[1]
-         left=joy_msg.axes[3]
+         right_joy =-joy_msg.axes[3]
+         left_joy =joy_msg.axes[0]
        
-         right_duty=int(right*1000)
-         left_duty=int(left*1000)
+         move_duty=int(right_joy*1000)
+         rotate_duty=int(left_joy*1000)
        
-         mc.set_speed(1, -right_duty)
-         mc.set_speed(2, -left_duty)
-         time.sleep(0.001)
-       
-           
-      # Pausing for `tsample` to give CPU time to process encoder signal
-      time.sleep(tsample)
-      # Getting current time (s)
-      tcurr = time.perf_counter() - tstart
-      # Getting angular position of the encoder
-      # roughly every `tsample` seconds (deg.)
-      anglecurr1 = 360 / ppr * encoder1.steps
-      anglecurr2 = 360 / ppr * encoder2.steps
-      distance1=anglecurr1 / 360 * 2 * math.pi * 72 / 1000
-      distance2=anglecurr2 / 360 * 2 * math.pi * 72 / 1000
-      # Printing angular position every `tdisp` seconds
-      if (np.floor(tcurr/tdisp) - np.floor(tprev/tdisp)) == 1:
-         print("Dis_right = {:0.03f} deg Angle_right = {:0.03f} deg".format(distance1,anglecurr1))
-      # Updating previous values
-      tprev = tcurr
-      
+         if(joy_msg.axes[3]!=-0):
+            mc.set_speed(1, -move_duty)
+            mc.set_speed(2, move_duty)
+            time.sleep(0.001)
 
+         if(joy_msg.axes[0]!=-0):
+            mc.set_speed(1, -rotate_duty)
+            mc.set_speed(2, -rotate_duty)
+            time.sleep(0.001)
+       
+         if(joy_msg.axes[0]==-0 and joy_msg.axes[3]==-0):
+            mc.set_speed(1, 0)
+            mc.set_speed(2, 0)
+            time.sleep(0.001)
+
+   def timer_callback(self):
+      if (self.joy_msgs[] == 1)
+      
 
 def main(args=None):
     pixels.fill((0, 0, 0))
+    pixels.show()
     rclpy.init(args=args)
     sub = JoySubscriber()
     rclpy.spin(sub)
